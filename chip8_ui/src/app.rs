@@ -109,7 +109,6 @@ impl App {
     /// the [`audio::System`] if it can be both created and played without errors,
     /// otherwise it returns `Err`.
     #[cfg(not(target_arch = "wasm32"))]
-
     fn create_audio_system(chip8: &Chip8) -> Result<audio::System, anyhow::Error> {
         let audio = audio::System::new(chip8.bus.clock.sound_timer.clone())?;
         audio.play().map(|_| audio).map_err(|e| {
@@ -207,7 +206,6 @@ impl App {
     /// Reset the audio system. This should be called anytime the [`Chip8`] is reset,
     /// as the new sound timer needs to be linked to a new [`audio::System`].
     #[cfg(not(target_arch = "wasm32"))]
-
     fn reset_audio(&mut self) {
         match Self::create_audio_system(&self.chip8) {
             Ok(audio) => self.audio = audio,
