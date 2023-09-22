@@ -16,13 +16,13 @@ Once you have Rust installed, follow these steps to build the emulator:
 1. Clone this repository to your local machine.
 
 ```bash
-git clone https://github.com/your-username/chip8-emulator.git
+git clone https://github.com/a-isaiahharvey/chip8.git
 ```
 
 2. Navigate to the project directory.
 
 ```bash
-cd chip8-emulator
+cd chip8
 ```
 
 3. Build the emulator using Cargo, the package manager and build tool for Rust.
