@@ -6,10 +6,6 @@ This is a Chip8 emulator written in Rust. The emulator allows you to run and pla
 
 * Installation
 * Usage
-* Controls
-* Supported Games
-* Contributing
-* License
 
 ## Installation
 
