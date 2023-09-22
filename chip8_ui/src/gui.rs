@@ -1,4 +1,8 @@
-use std::path::PathBuf;
+use std::{
+    future::Future,
+    path::PathBuf,
+    sync::mpsc::{self, Receiver, Sender},
+};
 
 use chip8::{graphics::Rgb, Chip8};
 use eframe::{
@@ -6,6 +10,9 @@ use eframe::{
     epaint::RectShape,
 };
 use egui::{Color32, Pos2, Rect, Rounding, Stroke};
+
+use rfd::FileHandle;
+
 use serde::{Deserialize, Serialize};
 
 use self::windows::{
@@ -95,6 +102,8 @@ pub struct Gui {
     config_window: ConfigWindow,
     debug_view: DebugView,
     current_view: CurrentView,
+    #[serde(skip, default = "mpsc::channel")]
+    pub message_channel: (Sender<Chip8Message>, Receiver<Chip8Message>),
 }
 
 impl Default for Gui {
@@ -112,22 +121,19 @@ impl Gui {
             config_window: ConfigWindow::default(),
             debug_view: DebugView::default(),
             current_view: CurrentView::default(),
+            message_channel: mpsc::channel(),
         }
     }
 
     /// Renders the next frame, which includes any UI updates as well
     /// as the `Chip8` graphics state.
-    pub fn update(
-        &mut self,
-        ctx: &Context,
-        frame: &mut eframe::Frame,
-        chip8: &Chip8,
-    ) -> Vec<Chip8Message> {
-        let mut messages = Vec::new();
-
-        let menu_response = self
-            .menu_panel
-            .update(ctx, frame, &self.current_view, &mut messages);
+    pub fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame, chip8: &Chip8) {
+        let menu_response = self.menu_panel.update(
+            ctx,
+            frame,
+            &self.current_view,
+            self.message_channel.0.clone(),
+        );
         if let MenuPanelResponse::ToggleConfigWindow = menu_response {
             self.config_window.toggle_visibility();
         }
@@ -159,7 +165,8 @@ impl Gui {
         if let MenuPanelResponse::Reset = menu_response {
             // send the color message to the chip8 backend so that
             // it restores the color settings for this session
-            self.config_window.push_color_messages(&mut messages);
+            self.config_window
+                .push_color_messages(&mut self.message_channel.0);
         }
         if let MenuPanelResponse::ToggleView = menu_response {
             self.current_view = match self.current_view {
@@ -177,16 +184,14 @@ impl Gui {
             CurrentView::Debug => self.debug_view.update(ctx, chip8),
         }
 
-        self.config_window.update(ctx, &mut messages);
+        self.config_window.update(ctx, &mut self.message_channel.0);
 
-        Self::update_key_state(ctx, &mut messages);
-
-        messages
+        Self::update_key_state(ctx, &mut self.message_channel.0);
     }
 
     /// Handles key events by updating the key
     /// state in the `Chip8` instance if necessary.
-    fn update_key_state(ctx: &Context, messages: &mut Vec<Chip8Message>) {
+    fn update_key_state(ctx: &Context, messages: &mut mpsc::Sender<Chip8Message>) {
         let mut update = Vec::new();
         if !ctx.wants_keyboard_input() {
             ctx.input(|input| {
@@ -196,7 +201,7 @@ impl Gui {
             });
         }
         if !update.is_empty() {
-            messages.push(Chip8Message::UpdateKeys(update));
+            let _ = messages.send(Chip8Message::UpdateKeys(update));
         }
     }
 }
@@ -253,35 +258,55 @@ impl MenuPanel {
         ctx: &Context,
         frame: &mut eframe::Frame,
         view: &CurrentView,
-        messages: &mut Vec<Chip8Message>,
+        mut messages: mpsc::Sender<Chip8Message>,
     ) -> MenuPanelResponse {
         let mut response = MenuPanelResponse::default();
 
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 ui.menu_button("File", |ui| {
-                    #[cfg(not(target_arch = "wasm32"))]
                     if ui.button("Open ROM").clicked() {
-                        if let Some(data) = Self::load_file_from_dialog() {
-                            messages.push(Chip8Message::LoadRom(data));
-                            response = MenuPanelResponse::Reset;
-                        }
+                        let messages = messages.clone();
+
+                        execute(async move {
+                            if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
+                                let buff = file.read().await;
+
+                                let _ = messages.send(Chip8Message::LoadRom(buff));
+                            }
+                        });
+
+                        response = MenuPanelResponse::Reset;
                     }
 
                     ui.separator();
 
-                    #[cfg(not(target_arch = "wasm32"))]
                     {
                         if ui.button("Load state").clicked() {
-                            if let Some(path) = rfd::FileDialog::new().pick_file() {
-                                messages.push(Chip8Message::LoadState(path));
-                                response = MenuPanelResponse::Reset;
-                            }
+                            let messages = messages.clone();
+                            execute(async move {
+                                if let Some(file) = rfd::AsyncFileDialog::new().pick_file().await {
+                                    let path = path(&file);
+                                    if let Some(path) = path {
+                                        let _ = messages.send(Chip8Message::LoadState(path));
+                                    }
+                                }
+                            });
+
+                            response = MenuPanelResponse::Reset;
                         }
 
                         if ui.button("Save State").clicked() {
-                            if let Some(path) = rfd::FileDialog::new().save_file() {
-                                messages.push(Chip8Message::SaveState(path));
+                            let (sender, receiver) = mpsc::channel();
+                            execute(async move {
+                                if let Some(file) = rfd::AsyncFileDialog::new().save_file().await {
+                                    let path = path(&file);
+                                    let _ = sender.send(path);
+                                }
+                            });
+
+                            if let Ok(Some(path)) = receiver.try_recv() {
+                                let _ = messages.send(Chip8Message::SaveState(path));
                             }
                         }
                     }
@@ -326,7 +351,7 @@ impl MenuPanel {
                     }
                 });
 
-                self.draw_execution_controls(view, ui, messages, &mut response);
+                self.draw_execution_controls(view, ui, &mut messages, &mut response);
             });
         });
 
@@ -353,7 +378,7 @@ impl MenuPanel {
         &mut self,
         view: &CurrentView,
         ui: &mut Ui,
-        messages: &mut Vec<Chip8Message>,
+        messages: &mut mpsc::Sender<Chip8Message>,
         response: &mut MenuPanelResponse,
     ) {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
@@ -365,16 +390,16 @@ impl MenuPanel {
                 "\u{23F8} Pause"
             };
             if ui.button(play_pause_label).clicked() {
-                messages.push(Chip8Message::TogglePause);
+                let _ = messages.send(Chip8Message::TogglePause);
                 *response = MenuPanelResponse::TogglePause;
             }
 
             if ui.button("\u{27A1} Step").clicked() {
-                messages.push(Chip8Message::Step);
+                let _ = messages.send(Chip8Message::Step);
             }
 
             if ui.button("\u{21BB} Reset").clicked() {
-                messages.push(Chip8Message::ResetROM);
+                let _ = messages.send(Chip8Message::ResetROM);
                 *response = MenuPanelResponse::Reset;
             }
         });
@@ -388,7 +413,7 @@ impl MenuPanel {
     /// Retrieves data from a file selected by a file dialog.
     /// Returns `None` if the chosen file cannot be read, or if the user
     /// cancelled the operation. Otherwise, returns the file's data as a `Vec<u8>`.
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(any())]
     fn load_file_from_dialog() -> Option<Vec<u8>> {
         rfd::FileDialog::new().pick_file().and_then(|file| {
             std::fs::read(file)
@@ -507,7 +532,7 @@ impl Default for ConfigWindow {
 impl ConfigWindow {
     /// Update and render the `ConfigWindow` to the given `Context`.
     /// This will append any GUI messages to `messages` if the `Chip8` state should be updated.
-    fn update(&mut self, ctx: &Context, messages: &mut Vec<Chip8Message>) {
+    fn update(&mut self, ctx: &Context, messages: &mut mpsc::Sender<Chip8Message>) {
         egui::Window::new("Config")
             .open(&mut self.visible)
             .show(ctx, |ui| {
@@ -518,7 +543,7 @@ impl ConfigWindow {
                         .color_edit_button_srgba(&mut self.foreground_rgb)
                         .changed()
                     {
-                        messages.push(Chip8Message::SetForegroundColor(self.foreground_rgb));
+                        let _ = messages.send(Chip8Message::SetForegroundColor(self.foreground_rgb));
                     }
                     ui.end_row();
 
@@ -528,7 +553,7 @@ impl ConfigWindow {
                         .color_edit_button_srgba(&mut self.background_rgb)
                         .changed()
                     {
-                        messages.push(Chip8Message::SetBackgroundColor(self.background_rgb));
+                        let _ = messages.send(Chip8Message::SetBackgroundColor(self.background_rgb));
                     }
                     ui.end_row();
 
@@ -536,14 +561,14 @@ impl ConfigWindow {
                     ui.label("Steps Per Frame");
                     let drag = egui::DragValue::new(&mut self.steps_per_frame);
                     if ui.add(drag).changed() {
-                        messages.push(Chip8Message::SetStepRate(self.steps_per_frame));
+                        let _ = messages.send(Chip8Message::SetStepRate(self.steps_per_frame));
                     }
                     ui.end_row();
 
                     ui.label("Enable Shift Quirk");
                     let shift_quirk_checkbox = ui.checkbox(&mut self.shift_quirk_enabled, "");
                     if shift_quirk_checkbox.changed() {
-                        messages.push(Chip8Message::SetShiftQuirk(self.shift_quirk_enabled));
+                        let _ = messages.send(Chip8Message::SetShiftQuirk(self.shift_quirk_enabled));
                     }
                     shift_quirk_checkbox.on_hover_text(
                         "Enable/disable the shift quirk in the interpreter. \
@@ -554,7 +579,7 @@ impl ConfigWindow {
                     ui.label("Enable VBLANK Wait");
                     let vblank_wait_checkbox = ui.checkbox(&mut self.vblank_wait_enabled, "");
                     if vblank_wait_checkbox.changed() {
-                        messages.push(Chip8Message::SetVblankWait(self.vblank_wait_enabled));
+                        let _ = messages.send(Chip8Message::SetVblankWait(self.vblank_wait_enabled));
                     }
                     vblank_wait_checkbox.on_hover_text(
                         "Enable/disable waiting for the vertical blank interrupt before drawing a sprite. \
@@ -566,9 +591,9 @@ impl ConfigWindow {
     }
 
     /// Push both foreground and background color update messages to `messages`.
-    fn push_color_messages(&self, messages: &mut Vec<Chip8Message>) {
-        messages.push(Chip8Message::SetForegroundColor(self.foreground_rgb));
-        messages.push(Chip8Message::SetBackgroundColor(self.background_rgb));
+    fn push_color_messages(&self, messages: &mut mpsc::Sender<Chip8Message>) {
+        let _ = messages.send(Chip8Message::SetForegroundColor(self.foreground_rgb));
+        let _ = messages.send(Chip8Message::SetBackgroundColor(self.background_rgb));
     }
 
     /// Toggle the visibility of this `ConfigWindow`,
@@ -846,4 +871,24 @@ impl DebugView {
         self.key_window.view(ctx, chip8);
         self.instructions_window.view(ctx, chip8, self.paused);
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn path(f: &FileHandle) -> Option<PathBuf> {
+    Some(f.path().to_path_buf())
+}
+
+#[cfg(target_arch = "wasm32")]
+fn path(_f: &FileHandle) -> Option<PathBuf> {
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn execute<F: Future<Output = ()> + Send + 'static>(f: F) {
+    std::thread::spawn(move || futures_executor::block_on(f));
+}
+
+#[cfg(target_arch = "wasm32")]
+fn execute<F: Future<Output = ()> + 'static>(f: F) {
+    wasm_bindgen_futures::spawn_local(f);
 }

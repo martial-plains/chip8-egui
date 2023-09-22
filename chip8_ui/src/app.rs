@@ -119,7 +119,9 @@ impl App {
 
     /// Update the [`Gui`] and handle all state-changing messages.
     fn update_gui(&mut self, ctx: &egui::Context, frame: &mut Frame) {
-        for message in self.gui.update(ctx, frame, &self.chip8) {
+        self.gui.update(ctx, frame, &self.chip8);
+
+        if let Ok(message) = self.gui.message_channel.1.try_recv() {
             match message {
                 Chip8Message::LoadRom(data) => {
                     self.chip8.reset_and_load(data.clone());
