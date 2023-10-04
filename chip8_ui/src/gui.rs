@@ -311,11 +311,13 @@ impl MenuPanel {
                         }
                     }
 
-                    ui.separator();
-
                     #[cfg(not(target_arch = "wasm32"))] // no File->Quit on web pages!
-                    if ui.button("Quit").clicked() {
-                        frame.close();
+                    {
+                        ui.separator();
+
+                        if ui.button("Quit").clicked() {
+                            frame.close();
+                        }
                     }
                 });
 
