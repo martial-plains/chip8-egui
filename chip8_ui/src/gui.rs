@@ -484,12 +484,12 @@ impl ScreenView {
                     // Draw the list of rectangles
                     let painter = ui.painter();
                     painter.extend(rects.iter().map(|(rect, color)| {
-                        egui::Shape::Rect(RectShape {
-                            rect: *rect,
-                            rounding: Rounding::none(),
-                            fill: *color,
-                            stroke: Stroke::new(1.0, *color),
-                        })
+                        egui::Shape::Rect(RectShape::new(
+                            *rect,
+                            Rounding::ZERO,
+                            *color,
+                            Stroke::new(1.0, *color),
+                        ))
                     }));
                 });
             },
