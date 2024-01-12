@@ -256,7 +256,7 @@ impl MenuPanel {
     fn update(
         &mut self,
         ctx: &Context,
-        frame: &mut eframe::Frame,
+        _frame: &mut eframe::Frame,
         view: &CurrentView,
         mut messages: mpsc::Sender<Chip8Message>,
     ) -> MenuPanelResponse {
@@ -316,7 +316,7 @@ impl MenuPanel {
                         ui.separator();
 
                         if ui.button("Quit").clicked() {
-                            frame.close();
+                            ctx.send_viewport_cmd(egui::ViewportCommand::Close);
                         }
                     }
                 });
