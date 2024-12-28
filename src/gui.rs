@@ -128,53 +128,50 @@ impl Gui {
     /// Renders the next frame, which includes any UI updates as well
     /// as the `Chip8` graphics state.
     pub fn update(&mut self, ctx: &Context, frame: &mut eframe::Frame, chip8: &Chip8) {
-        let menu_response = self.menu_panel.update(
-            ctx,
-            frame,
-            &self.current_view,
-            self.message_channel.0.clone(),
-        );
-        if let MenuPanelResponse::ToggleConfigWindow = menu_response {
+        let menu_response =
+            self.menu_panel
+                .update(ctx, frame, &self.current_view, &self.message_channel.0);
+        if matches!(menu_response, MenuPanelResponse::ToggleConfigWindow) {
             self.config_window.toggle_visibility();
         }
 
-        if let MenuPanelResponse::ToggleResgistersWindow = menu_response {
+        if matches!(menu_response, MenuPanelResponse::ToggleResgistersWindow) {
             self.debug_view.registers_window.toggle_visibility();
         }
 
-        if let MenuPanelResponse::ToggleStackWindow = menu_response {
+        if matches!(menu_response, MenuPanelResponse::ToggleStackWindow) {
             self.debug_view.stack_window.toggle_visibility();
         }
 
-        if let MenuPanelResponse::ToggleScreenWindow = menu_response {
+        if matches!(menu_response, MenuPanelResponse::ToggleScreenWindow) {
             self.debug_view.screen_window.toggle_visibility();
         }
 
-        if let MenuPanelResponse::ToggleTimersWindow = menu_response {
+        if matches!(menu_response, MenuPanelResponse::ToggleTimersWindow) {
             self.debug_view.timers_window.toggle_visibility();
         }
 
-        if let MenuPanelResponse::ToggleKeyWindow = menu_response {
+        if matches!(menu_response, MenuPanelResponse::ToggleKeyWindow) {
             self.debug_view.key_window.toggle_visibility();
         }
 
-        if let MenuPanelResponse::ToggleInstructionsWindow = menu_response {
+        if matches!(menu_response, MenuPanelResponse::ToggleInstructionsWindow) {
             self.debug_view.instructions_window.toggle_visibility();
         }
 
-        if let MenuPanelResponse::Reset = menu_response {
+        if matches!(menu_response, MenuPanelResponse::Reset) {
             // send the color message to the chip8 backend so that
             // it restores the color settings for this session
             self.config_window
-                .push_color_messages(&mut self.message_channel.0);
+                .push_color_messages(&self.message_channel.0);
         }
-        if let MenuPanelResponse::ToggleView = menu_response {
+        if matches!(menu_response, MenuPanelResponse::ToggleView) {
             self.current_view = match self.current_view {
                 CurrentView::Screen => CurrentView::Debug,
                 CurrentView::Debug => CurrentView::Screen,
             }
         }
-        if let MenuPanelResponse::TogglePause = menu_response {
+        if matches!(menu_response, MenuPanelResponse::TogglePause) {
             self.menu_panel.toggle_pause();
             self.debug_view.toggle_pause();
         }
@@ -184,14 +181,14 @@ impl Gui {
             CurrentView::Debug => self.debug_view.update(ctx, chip8),
         }
 
-        self.config_window.update(ctx, &mut self.message_channel.0);
+        self.config_window.update(ctx, &self.message_channel.0);
 
-        Self::update_key_state(ctx, &mut self.message_channel.0);
+        Self::update_key_state(ctx, &self.message_channel.0);
     }
 
     /// Handles key events by updating the key
     /// state in the `Chip8` instance if necessary.
-    fn update_key_state(ctx: &Context, messages: &mut mpsc::Sender<Chip8Message>) {
+    fn update_key_state(ctx: &Context, messages: &mpsc::Sender<Chip8Message>) {
         let mut update = Vec::new();
         if !ctx.wants_keyboard_input() {
             ctx.input(|input| {
@@ -254,11 +251,11 @@ impl MenuPanel {
     /// Update the Ui of this `MenuPanel`. This will return a [`MenuPanelResponse`] indicating
     /// how other Ui components should be updated.
     fn update(
-        &mut self,
+        &self,
         ctx: &Context,
         _frame: &mut eframe::Frame,
         view: &CurrentView,
-        mut messages: mpsc::Sender<Chip8Message>,
+        messages: &mpsc::Sender<Chip8Message>,
     ) -> MenuPanelResponse {
         let mut response = MenuPanelResponse::default();
 
@@ -326,7 +323,7 @@ impl MenuPanel {
                         response = MenuPanelResponse::ToggleConfigWindow;
                     }
 
-                    if let CurrentView::Debug = view {
+                    if matches!(view, CurrentView::Debug) {
                         if ui.button("Registers").clicked() {
                             response = MenuPanelResponse::ToggleResgistersWindow;
                         }
@@ -353,7 +350,7 @@ impl MenuPanel {
                     }
                 });
 
-                self.draw_execution_controls(view, ui, &mut messages, &mut response);
+                self.draw_execution_controls(view, ui, messages, &mut response);
             });
         });
 
@@ -377,10 +374,10 @@ impl MenuPanel {
 
     /// Draw the buttons that control the Chip8 program's execution.
     fn draw_execution_controls(
-        &mut self,
+        &self,
         view: &CurrentView,
         ui: &mut Ui,
-        messages: &mut mpsc::Sender<Chip8Message>,
+        messages: &mpsc::Sender<Chip8Message>,
         response: &mut MenuPanelResponse,
     ) {
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Min), |ui| {
@@ -465,8 +462,8 @@ impl ScreenView {
                     for (i, color) in colors.chunks(3).enumerate() {
                         let row = i / chip8::graphics::WIDTH;
                         let col = i % chip8::graphics::WIDTH;
-                        let rect_x = rect.left() + col as f32 * pixel_height;
-                        let rect_y = rect.top() + row as f32 * pixel_width;
+                        let rect_x = (col as f32).mul_add(pixel_height, rect.left());
+                        let rect_y = (row as f32).mul_add(pixel_width, rect.top());
                         let color = Color32::from_rgb(color[0], color[1], color[2]);
                         let color_rect = Rect::from_min_max(
                             Pos2 {
@@ -534,7 +531,7 @@ impl Default for ConfigWindow {
 impl ConfigWindow {
     /// Update and render the `ConfigWindow` to the given `Context`.
     /// This will append any GUI messages to `messages` if the `Chip8` state should be updated.
-    fn update(&mut self, ctx: &Context, messages: &mut mpsc::Sender<Chip8Message>) {
+    fn update(&mut self, ctx: &Context, messages: &mpsc::Sender<Chip8Message>) {
         egui::Window::new("Config")
             .open(&mut self.visible)
             .show(ctx, |ui| {
@@ -593,7 +590,7 @@ impl ConfigWindow {
     }
 
     /// Push both foreground and background color update messages to `messages`.
-    fn push_color_messages(&self, messages: &mut mpsc::Sender<Chip8Message>) {
+    fn push_color_messages(&self, messages: &mpsc::Sender<Chip8Message>) {
         let _ = messages.send(Chip8Message::SetForegroundColor(self.foreground_rgb));
         let _ = messages.send(Chip8Message::SetBackgroundColor(self.background_rgb));
     }
@@ -749,7 +746,7 @@ mod windows {
                 .show(ctx, |ui| {
                     ui.style_mut().override_text_style = Some(egui::TextStyle::Heading);
                     let key = |ui: &mut Ui, code: u8| {
-                        ui.set_enabled(false);
+                        ui.disable();
                         let label = egui::SelectableLabel::new(
                             chip8.bus.input.is_key_pressed(code),
                             format!("{code:X}"),
@@ -875,14 +872,12 @@ impl DebugView {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn path(f: &FileHandle) -> Option<PathBuf> {
-    Some(f.path().to_path_buf())
-}
-
-#[cfg(target_arch = "wasm32")]
-fn path(_f: &FileHandle) -> Option<PathBuf> {
-    None
+    if cfg!(not(target_arch = "wasm32")) {
+        Some(f.path().to_path_buf())
+    } else {
+        None
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]

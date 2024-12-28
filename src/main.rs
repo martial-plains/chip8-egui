@@ -16,7 +16,7 @@ fn main() -> eframe::Result<()> {
     eframe::run_native(
         "Chip8",
         native_options,
-        Box::new(|cc| Box::new(chip8_ui::App::new(cc))),
+        Box::new(|cc| Ok(Box::new(chip8_ui::App::new(cc)))),
     )
 }
 
@@ -33,7 +33,7 @@ fn main() {
             .start(
                 "the_canvas_id", // hardcode it
                 web_options,
-                Box::new(|cc| Box::new(chip8_ui::App::new(cc))),
+                Box::new(|cc| Ok(Box::new(chip8_ui::App::new(cc)))),
             )
             .await
             .expect("failed to start eframe");

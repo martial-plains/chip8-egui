@@ -75,7 +75,7 @@ impl App {
         // Load previous app state (if any).
         // Note that you must enable the `persistence` feature for this to work.
         if let Some(storage) = cc.storage {
-            return eframe::get_value::<App>(storage, eframe::APP_KEY).unwrap_or_default();
+            return eframe::get_value::<Self>(storage, eframe::APP_KEY).unwrap_or_default();
         }
 
         let mut chip8 = Chip8::new();
@@ -111,7 +111,7 @@ impl App {
     #[cfg(not(target_arch = "wasm32"))]
     fn create_audio_system(chip8: &Chip8) -> Result<audio::System, anyhow::Error> {
         let audio = audio::System::new(chip8.bus.clock.sound_timer.clone())?;
-        audio.play().map(|_| audio).map_err(|e| {
+        audio.play().map(|()| audio).map_err(|e| {
             log::error!("Failed to play audio stream: {e}");
             e
         })
