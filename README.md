@@ -16,7 +16,7 @@ Once you have Rust installed, follow these steps to build the emulator:
 1. Clone this repository to your local machine.
 
 ```bash
-git clone https://github.com/a-isaiahharvey/chip8-egui.git
+git clone https://github.com/martial-plains/chip8-egui.git
 ```
 
 2. Navigate to the project directory.
