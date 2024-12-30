@@ -4,24 +4,24 @@ version = "0.1.0"
 authors = ["Allister Isaiah Harvey <a.i.harvey@icloud.com>"]
 edition = "2021"
 
-
 [dependencies]
 # Local Dependencies
 chip8 = { git = "https://github.com/martial-plains/chip8-rust.git", branch = "main" }
 
 # Logging
-log = "0.4.20"
+log = "0.4"
 
 # Error Handling
 anyhow = "1.0.95"
 
 # UI
-egui = "0.30.0"
-eframe = { version = "0.30.0", default-features = false, features = [
-    "accesskit",     # Make egui comptaible with screen readers. NOTE: adds a lot of dependencies.
+egui = "0.30"
+eframe = { version = "0.30", default-features = false, features = [
+    "accesskit",     # Make egui compatible with screen readers. NOTE: adds a lot of dependencies.
     "default_fonts", # Embed the default egui fonts.
     "glow",          # Use the glow rendering backend. Alternative: "wgpu".
     "persistence",   # Enable restoring app state when restarting the app.
+    "wayland",       # To support Linux (and CI)
 ] }
 
 # Serialization
@@ -44,7 +44,18 @@ cpal = "0.15.2"
 
 # web:
 [target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen-futures = "0.4"
+web-sys = "0.3.70"
 # Logging
 console_error_panic_hook = "0.1.7"
 console_log = "1.0.0"
-wasm-bindgen-futures = "0.4.49"
+
+
+[profile.release]
+opt-level = 2 # fast and small wasm
+
+# Optimize all dependencies even in debug builds:
+[profile.dev.package."*"]
+opt-level = 2
+
+[patch.crates-io]

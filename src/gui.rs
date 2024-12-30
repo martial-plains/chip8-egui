@@ -873,10 +873,14 @@ impl DebugView {
 }
 
 fn path(f: &FileHandle) -> Option<PathBuf> {
-    if cfg!(not(target_arch = "wasm32")) {
-        Some(f.path().to_path_buf())
-    } else {
-        None
+    cfg_match! {
+        cfg(not(target_arch = "wasm32")) => {
+            Some(f.path().to_path_buf())
+        }
+
+        _ => {
+            None
+        }
     }
 }
 
