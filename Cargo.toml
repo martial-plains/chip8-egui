@@ -3,6 +3,7 @@ name = "chip8_ui"
 version = "0.1.0"
 authors = ["Allister Isaiah Harvey <a.i.harvey@icloud.com>"]
 edition = "2021"
+include = ["**/*.rs", "Cargo.toml"]
 
 [dependencies]
 # Local Dependencies
