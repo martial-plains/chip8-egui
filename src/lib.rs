@@ -1,4 +1,3 @@
-#![feature(cfg_match)]
 #![warn(clippy::pedantic, clippy::nursery)]
 
 mod app;

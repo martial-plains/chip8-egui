@@ -872,16 +872,15 @@ impl DebugView {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(clippy::unnecessary_wraps)]
 fn path(f: &FileHandle) -> Option<PathBuf> {
-    cfg_match! {
-        cfg(not(target_arch = "wasm32")) => {
-            Some(f.path().to_path_buf())
-        }
+    Some(f.path().to_path_buf())
+}
 
-        _ => {
-            None
-        }
-    }
+#[cfg(target_arch = "wasm32")]
+fn path(f: &FileHandle) -> Option<PathBuf> {
+    None
 }
 
 #[cfg(not(target_arch = "wasm32"))]
